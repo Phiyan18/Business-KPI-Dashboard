@@ -1,0 +1,172 @@
+-- Useful SQL Queries for Analysis and Power BI
+
+-- 1. Monthly Revenue Trend
+SELECT 
+    d.year,
+    d.month_name,
+    SUM(s.revenue) as total_revenue,
+    SUM(s.profit) as total_profit,
+    AVG(s.revenue) as avg_order_value,
+    COUNT(DISTINCT s.customer_key) as unique_customers
+FROM fact_sales s
+JOIN dim_date d ON s.date_key = d.date_key
+GROUP BY d.year, d.month, d.month_name
+ORDER BY d.year, d.month;
+
+-- 2. Top 10 Products by Revenue
+SELECT 
+    p.product_name,
+    p.category,
+    p.sub_category,
+    SUM(s.revenue) as total_revenue,
+    SUM(s.quantity) as total_quantity,
+    SUM(s.profit) as total_profit
+FROM fact_sales s
+JOIN dim_products p ON s.product_key = p.product_key
+GROUP BY p.product_name, p.category, p.sub_category
+ORDER BY total_revenue DESC
+LIMIT 10;
+
+-- 3. Customer Segment Analysis
+SELECT 
+    c.segment,
+    COUNT(DISTINCT c.customer_key) as customer_count,
+    SUM(s.revenue) as total_revenue,
+    AVG(s.revenue) as avg_order_value,
+    SUM(s.profit) as total_profit,
+    (SUM(s.profit) / SUM(s.revenue) * 100) as profit_margin_pct
+FROM fact_sales s
+JOIN dim_customers c ON s.customer_key = c.customer_key
+GROUP BY c.segment
+ORDER BY total_revenue DESC;
+
+-- 4. Geographic Revenue Distribution
+SELECT 
+    c.country,
+    c.state,
+    COUNT(DISTINCT c.customer_key) as customer_count,
+    SUM(s.revenue) as total_revenue,
+    SUM(s.profit) as total_profit
+FROM fact_sales s
+JOIN dim_customers c ON s.customer_key = c.customer_key
+GROUP BY c.country, c.state
+ORDER BY total_revenue DESC;
+
+-- 5. Weekly Sales Pattern
+SELECT 
+    d.day_name,
+    d.day_of_week,
+    AVG(daily_revenue) as avg_revenue,
+    AVG(daily_orders) as avg_orders
+FROM (
+    SELECT 
+        s.date_key,
+        SUM(s.revenue) as daily_revenue,
+        COUNT(DISTINCT s.transaction_id) as daily_orders
+    FROM fact_sales s
+    GROUP BY s.date_key
+) daily_stats
+JOIN dim_date d ON daily_stats.date_key = d.date_key
+GROUP BY d.day_name, d.day_of_week
+ORDER BY d.day_of_week;
+
+-- 6. Customer Purchase Frequency
+SELECT 
+    purchase_frequency,
+    COUNT(*) as customer_count,
+    AVG(total_revenue) as avg_customer_value
+FROM (
+    SELECT 
+        s.customer_key,
+        COUNT(DISTINCT s.transaction_id) as purchase_frequency,
+        SUM(s.revenue) as total_revenue
+    FROM fact_sales s
+    GROUP BY s.customer_key
+) customer_stats
+GROUP BY purchase_frequency
+ORDER BY purchase_frequency;
+
+-- 7. Category Performance Comparison
+SELECT 
+    p.category,
+    SUM(s.revenue) as total_revenue,
+    SUM(s.profit) as total_profit,
+    (SUM(s.profit) / SUM(s.revenue) * 100) as profit_margin_pct,
+    SUM(s.quantity) as total_units_sold,
+    COUNT(DISTINCT s.transaction_id) as order_count
+FROM fact_sales s
+JOIN dim_products p ON s.product_key = p.product_key
+GROUP BY p.category
+ORDER BY total_revenue DESC;
+
+-- 8. KPI Trend Analysis
+SELECT 
+    d.full_date,
+    k.kpi_name,
+    k.kpi_value,
+    k.target_value,
+    k.variance_pct,
+    k.status
+FROM fact_kpis k
+JOIN dim_date d ON k.date_key = d.date_key
+WHERE k.kpi_name IN ('Total_Revenue', 'Profit_Margin', 'Customer_Churn_Rate')
+ORDER BY d.full_date DESC, k.kpi_name;
+
+-- 9. Data Quality Status
+SELECT 
+    dq.table_name,
+    MAX(d.full_date) as last_check_date,
+    AVG(dq.quality_score) as avg_quality_score,
+    MAX(dq.quality_score) as best_score,
+    MIN(dq.quality_score) as worst_score,
+    SUM(dq.error_count) as total_errors
+FROM fact_data_quality dq
+JOIN dim_date d ON dq.date_key = d.date_key
+GROUP BY dq.table_name
+ORDER BY avg_quality_score DESC;
+
+-- 10. Error Analysis
+SELECT 
+    table_name,
+    error_type,
+    COUNT(*) as error_count,
+    MAX(error_timestamp) as last_occurrence
+FROM log_data_errors
+WHERE error_timestamp >= CURRENT_DATE - INTERVAL '30 days'
+GROUP BY table_name, error_type
+ORDER BY error_count DESC;
+
+-- 11. Cohort Analysis (Monthly Registration Cohorts)
+WITH cohorts AS (
+    SELECT 
+        c.customer_key,
+        DATE_TRUNC('month', c.registration_date) as cohort_month,
+        DATE_TRUNC('month', s.order_date) as purchase_month,
+        SUM(s.revenue) as revenue
+    FROM dim_customers c
+    LEFT JOIN fact_sales s ON c.customer_key = s.customer_key
+    JOIN dim_date d ON s.date_key = d.date_key
+    GROUP BY c.customer_key, cohort_month, purchase_month
+)
+SELECT 
+    cohort_month,
+    purchase_month,
+    COUNT(DISTINCT customer_key) as active_customers,
+    SUM(revenue) as total_revenue
+FROM cohorts
+GROUP BY cohort_month, purchase_month
+ORDER BY cohort_month, purchase_month;
+
+-- 12. Year-over-Year Comparison
+SELECT 
+    d.month_name,
+    SUM(CASE WHEN d.year = EXTRACT(YEAR FROM CURRENT_DATE) THEN s.revenue ELSE 0 END) as current_year_revenue,
+    SUM(CASE WHEN d.year = EXTRACT(YEAR FROM CURRENT_DATE) - 1 THEN s.revenue ELSE 0 END) as previous_year_revenue,
+    (SUM(CASE WHEN d.year = EXTRACT(YEAR FROM CURRENT_DATE) THEN s.revenue ELSE 0 END) - 
+     SUM(CASE WHEN d.year = EXTRACT(YEAR FROM CURRENT_DATE) - 1 THEN s.revenue ELSE 0 END)) / 
+     NULLIF(SUM(CASE WHEN d.year = EXTRACT(YEAR FROM CURRENT_DATE) - 1 THEN s.revenue ELSE 0 END), 0) * 100 as growth_rate
+FROM fact_sales s
+JOIN dim_date d ON s.date_key = d.date_key
+WHERE d.year IN (EXTRACT(YEAR FROM CURRENT_DATE), EXTRACT(YEAR FROM CURRENT_DATE) - 1)
+GROUP BY d.month, d.month_name
+ORDER BY d.month;

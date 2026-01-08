@@ -1,0 +1,28 @@
+database:
+  type: "postgresql"
+  host: "localhost"
+  port: 5432
+  database: "business_kpi_db"
+  username: "postgres"
+  password: "123"
+
+data_sources:
+  sales:
+    url: null
+    path: "data/raw/sales_data.csv"
+  customers:
+    url: null
+    path: "data/raw/customer_data.csv"
+  products:
+    url: null
+    path: "data/raw/product_data.csv"
+
+quality_thresholds:
+  completeness_min: 0.95  # Minimum completeness percentage (95%)
+  duplicate_max: 0.01     # Maximum duplicate percentage (1%)
+  outlier_zscore: 3.0     # Z-score threshold for outlier detection
+
+kpi_config:
+  revenue_target: 100000.0      # Target revenue amount
+  churn_threshold: 0.05         # Maximum acceptable churn rate (5%)
+  conversion_target: 0.30       # Target conversion rate (30%)  
